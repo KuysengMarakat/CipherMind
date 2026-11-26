@@ -1,0 +1,153 @@
+/* CipherMind design tokens.
+   Graphite ground, one periwinkle accent for interaction, three status colours that mean
+   exactly one thing each: green = verified/flag, amber = uncertain, coral = failed. */
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  src: url('../assets/fonts/atkinson-hyperlegible-next-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  src: url('../assets/fonts/atkinson-hyperlegible-next-latin-500-normal.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  src: url('../assets/fonts/atkinson-hyperlegible-next-latin-600-normal.woff2') format('woff2');
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible Mono';
+  src: url('../assets/fonts/atkinson-hyperlegible-mono-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible Mono';
+  src: url('../assets/fonts/atkinson-hyperlegible-mono-latin-500-normal.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+
+:root {
+  /* Surfaces */
+  --ground: #171a21;
+  --panel: #1b1f27;
+  --sunken: #14171d;
+  --raised: #232833;
+  --hover: #2a303c;
+  --line: #2b313d;
+  --line-strong: #3a4150;
+
+  /* Text */
+  --text: #dde2ea;
+  --text-2: #b0b8c6;
+  --muted: #828ba0;
+  --faint: #5b6375;
+
+  /* Accent: interaction, selection, focus */
+  --accent: #93a4f5;
+  --accent-strong: #aab8ff;
+  --accent-ink: #11162e;
+  --accent-soft: rgba(147, 164, 245, 0.13);
+  --accent-line: rgba(147, 164, 245, 0.45);
+
+  /* Status */
+  --ok: #74c69d;
+  --ok-soft: rgba(116, 198, 157, 0.13);
+  --warn: #e2b862;
+  --warn-soft: rgba(226, 184, 98, 0.13);
+  --bad: #e8807a;
+  --bad-soft: rgba(232, 128, 122, 0.13);
+
+  /* Type */
+  --font-ui: 'Atkinson Hyperlegible Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-data: 'Atkinson Hyperlegible Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 19px;
+  --fs-data: 13.5px;
+
+  /* Space (4px base) */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+
+  /* Radius follows hierarchy: controls < data wells < dialogs; panes are tiled and square. */
+  --r-ctl: 6px;
+  --r-well: 8px;
+  --r-dlg: 12px;
+
+  --rail-w: 44px;
+  --topbar-h: 52px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+code,
+kbd,
+pre,
+.mono {
+  font-family: var(--font-data);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(147, 164, 245, 0.32);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,146 @@
+// Generates a standalone Python 3 script that reproduces the chain (Module G).
+
+import { tryUtf8, toHex } from './bytes.js';
+import { opById } from '../ops/registry.js';
+
+const HELPERS = {
+  b64: {
+    imports: ['base64', 're'],
+    code: `def b64decode_lenient(data: bytes) -> bytes:
+    s = re.sub(rb"\\s+", b"", data).replace(b"-", b"+").replace(b"_", b"/").rstrip(b"=")
+    return base64.b64decode(s + b"=" * (-len(s) % 4))`,
+  },
+  b58: {
+    code: `B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+
+def b58decode(data: bytes) -> bytes:
+    s = data.decode().strip()
+    n = 0
+    for ch in s:
+        n = n * 58 + B58.index(ch)
+    raw = n.to_bytes((n.bit_length() + 7) // 8, "big")
+    return b"\\x00" * (len(s) - len(s.lstrip("1"))) + raw
+
+
+def b58encode(data: bytes) -> bytes:
+    n = int.from_bytes(data, "big")
+    out = ""
+    while n:
+        n, r = divmod(n, 58)
+        out = B58[r] + out
+    return ("1" * (len(data) - len(data.lstrip(b"\\x00"))) + out).encode()`,
+  },
+  morse: {
+    code: `MORSE = {
+    ".-": "A", "-...": "B", "-.-.": "C", "-..": "D", ".": "E", "..-.": "F", "--.": "G", "....": "H",
+    "..": "I", ".---": "J", "-.-": "K", ".-..": "L", "--": "M", "-.": "N", "---": "O", ".--.": "P",
+    "--.-": "Q", ".-.": "R", "...": "S", "-": "T", "..-": "U", "...-": "V", ".--": "W", "-..-": "X",
+    "-.--": "Y", "--..": "Z", "-----": "0", ".----": "1", "..---": "2", "...--": "3", "....-": "4",
+    ".....": "5", "-....": "6", "--...": "7", "---..": "8", "----.": "9", ".-.-.-": ".", "--..--": ",",
+    "..--..": "?", "-.-.--": "!", "-..-.": "/", "-.--.": "(", "-.--.-": ")", "---...": ":", "-...-": "=",
+    ".-.-.": "+", "-....-": "-", "..--.-": "_", ".--.-.": "@", ".----.": "'", ".-..-.": '"',
+}
+
+
+def morse_decode(data: bytes) -> bytes:
+    words = re.split(r"\\s*[/|]\\s*|\\s{3,}", data.decode().replace("_", "-").strip())
+    return " ".join("".join(MORSE[s] for s in w.split()) for w in words).encode()`,
+    imports: ['re'],
+  },
+  caesar: {
+    code: `def caesar(data: bytes, shift: int) -> bytes:
+    out = bytearray()
+    for b in data:
+        if 65 <= b <= 90:
+            out.append(65 + (b - 65 - shift) % 26)
+        elif 97 <= b <= 122:
+            out.append(97 + (b - 97 - shift) % 26)
+        else:
+            out.append(b)
+    return bytes(out)`,
+  },
+  atbash: {
+    code: `def atbash(data: bytes) -> bytes:
+    return bytes(155 - b if 65 <= b <= 90 else 219 - b if 97 <= b <= 122 else b for b in data)`,
+  },
+  affine: {
+    code: `def affine_decrypt(data: bytes, a: int, b: int) -> bytes:
+    inv = pow(a, -1, 26)
+    out = bytearray()
+    for c in data:
+        if 65 <= c <= 90:
+            out.append(65 + inv * (c - 65 - b) % 26)
+        elif 97 <= c <= 122:
+            out.append(97 + inv * (c - 97 - b) % 26)
+        else:
+            out.append(c)
+    return bytes(out)`,
+  },
+  vigenere: {
+    code: `def vigenere(data: bytes, key: str, decrypt: bool = True) -> bytes:
+    shifts = [ord(k) - 65 for k in key.upper() if k.isalpha()]
+    out, j = bytearray(), 0
+    for b in data:
+        base = 65 if 65 <= b <= 90 else 97 if 97 <= b <= 122 else None
+        if base is None:
+            out.append(b)
+            continue
+        s = shifts[j % len(shifts)] * (-1 if decrypt else 1)
+        out.append(base + (b - base + s) % 26)
+        j += 1
+    return bytes(out)`,
+  },
+  substitution: {
+    code: `def substitution_decrypt(data: bytes, alphabet: str) -> bytes:
+    inverse = {ord(c): i for i, c in enumerate(alphabet.upper())}
+    out = bytearray()
+    for b in data:
+        if 65 <= b <= 90:
+            out.append(65 + inverse[b])
+        elif 97 <= b <= 122:
+            out.append(97 + inverse[b - 32])
+        else:
+            out.append(b)
+    return bytes(out)`,
+  },
+};
+
+export function buildScript(inputBytes, steps, { title = 'CipherMind chain' } = {}) {
+  const active = steps.filter((s) => !s.disabled);
+  const imports = new Set();
+  const helpers = new Set();
+  const body = [];
+  active.forEach((step, i) => {
+    const op = opById[step.opId];
+    const py = op.python(step.params || {});
+    (py.imports || []).forEach((m) => imports.add(m));
+    (py.helpers || []).forEach((h) => {
+      helpers.add(h);
+      (HELPERS[h].imports || []).forEach((m) => imports.add(m));
+    });
+    body.push(`# ${i + 1}. ${op.explain(step.params || {})}${step.note ? `\n#    ${step.note}` : ''}`);
+    body.push(py.code);
+    body.push('');
+  });
+
+  const text = tryUtf8(inputBytes);
+  const inputLine = text !== null && inputBytes.length < 200000
+    ? `data = ${JSON.stringify(text)}.encode()`
+    : `data = bytes.fromhex("${toHex(inputBytes)}")`;
+
+  const chainName = active.map((s) => opById[s.opId].explain(s.params || {})).join(' -> ') || 'no steps';
+  const lines = [
+    '#!/usr/bin/env python3',
+    `"""${title}: ${chainName}`,
+    '',
+    'Generated by the CipherMind workbench. Standard library only.',
+    '"""',
+    ...[...imports].sort().map((m) => `import ${m}`),
+    '',
+  ];
+  for (const h of helpers) lines.push('', HELPERS[h].code, '');
+  lines.push('', inputLine, '', ...body);
+  lines.push('try:', '    print(data.decode("utf-8"))', 'except UnicodeDecodeError:', '    print(data.hex())', '');
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n\n');
+}

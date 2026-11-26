@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CipherMind workbench</title>
+    <meta name="description" content="Multi-layer cryptanalysis workbench for CTF challenges." />
+    <meta name="color-scheme" content="dark" />
+    <!-- Set to the engine's base URL (e.g. /api) when the Python engine serves this page. Empty = browser only. -->
+    <meta name="ciphermind-engine" content="" />
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="assets/fonts/atkinson-hyperlegible-next-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="assets/fonts/atkinson-hyperlegible-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="css/tokens.css" />
+    <link rel="stylesheet" href="css/app.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#layers">Skip to chain</a>
+
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand-mark" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+          <path class="bm-rail" d="M11 5.5v11" />
+          <circle class="bm-node" cx="11" cy="4" r="2.4" />
+          <circle class="bm-node" cx="11" cy="11" r="2.4" />
+          <circle class="bm-end" cx="11" cy="18" r="2.9" />
+        </svg>
+        <span class="brand-name">CipherMind</span>
+      </div>
+
+      <div class="topbar-center">
+        <label class="flag-field" title="Results that contain this prefix followed by {…} count as verified">
+          <span class="flag-field-label">Flag prefix</span>
+          <input id="flag-prefix" type="text" spellcheck="false" autocomplete="off" placeholder="any common prefix" data-focus-key="flag-prefix" />
+        </label>
+        <div class="history" role="group" aria-label="History">
+          <button id="btn-undo" class="btn-icon" type="button" aria-label="Undo" title="Undo (Ctrl+Z)"></button>
+          <button id="btn-redo" class="btn-icon" type="button" aria-label="Redo" title="Redo (Ctrl+Shift+Z)"></button>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <button id="engine-pill" class="engine-pill" type="button" data-state="unknown" title="Engine connection">
+          <span class="engine-dot" aria-hidden="true"></span><span class="engine-label">Checking engine</span>
+        </button>
+        <button id="btn-script" class="btn" type="button" title="Python script that reproduces the chain"></button>
+        <button id="btn-solve" class="btn btn-primary" type="button" title="Search for a chain automatically (Ctrl+Enter)"></button>
+        <button id="btn-help" class="btn-icon" type="button" aria-label="Help and shortcuts" title="Help (?)"></button>
+      </div>
+    </header>
+
+    <nav class="pane-switch" aria-label="Panels">
+      <button type="button" data-pane="library">Library</button>
+      <button type="button" data-pane="chain">Chain</button>
+      <button type="button" data-pane="inspector">Inspect</button>
+    </nav>
+
+    <main class="workspace" id="workspace">
+      <aside class="pane library" id="library" aria-label="Operation library">
+        <div class="library-search">
+          <span class="library-search-icon"></span>
+          <input id="library-filter" type="search" placeholder="Find an operation" aria-label="Find an operation" autocomplete="off" />
+          <kbd>/</kbd>
+        </div>
+        <p class="library-target" id="library-target"></p>
+        <div class="library-groups" id="library-groups"></div>
+      </aside>
+      <div class="library-scrim" id="library-scrim" hidden></div>
+
+      <section class="pane chain-pane" aria-labelledby="chain-title">
+        <div class="pane-head">
+          <h1 id="chain-title" class="pane-title">Chain</h1>
+          <p class="chain-summary" id="chain-summary"></p>
+          <button id="btn-library" class="btn btn-quiet library-toggle" type="button" aria-controls="library" aria-expanded="false"></button>
+        </div>
+        <div class="chain-scroll" id="chain-scroll">
+          <ol class="layers" id="layers" aria-label="Layers">
+            <li class="layer layer-input" data-index="0" id="layer-input">
+              <div class="rail" aria-hidden="true"><span class="node"></span></div>
+              <div class="layer-body">
+                <div class="layer-head">
+                  <button class="layer-select" type="button" data-select="0" data-focus-key="sel-0">
+                    <span class="layer-no">0</span>
+                    <span class="layer-name">Input</span>
+                  </button>
+                  <span class="layer-size" id="input-size"></span>
+                  <span class="chip" id="input-status"></span>
+                  <div class="layer-tools">
+                    <button class="btn btn-quiet btn-sm" type="button" id="btn-import"></button>
+                    <button class="btn btn-quiet btn-sm" type="button" id="btn-examples">Examples</button>
+                    <button class="btn btn-quiet btn-sm" type="button" id="btn-clear">Clear</button>
+                  </div>
+                </div>
+                <div class="editor-wrap" id="editor-wrap">
+                  <textarea id="input-editor" class="editor" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Ciphertext input" placeholder="Paste ciphertext, an encoded string or challenge parameters"></textarea>
+                  <div class="binary-input" id="binary-input" hidden></div>
+                  <div class="drop-hint" aria-hidden="true">Drop file to load it as input</div>
+                </div>
+                <p class="editor-meta" id="input-meta"></p>
+                <div class="empty-start" id="empty-start" hidden></div>
+              </div>
+            </li>
+          </ol>
+          <div class="chain-end" id="chain-end"></div>
+        </div>
+      </section>
+
+      <aside class="pane inspector" id="inspector" aria-label="Inspector">
+        <div class="tabs" role="tablist" aria-label="Inspector views">
+          <button role="tab" type="button" id="tab-analysis" data-tab="analysis" aria-controls="inspector-body">Analysis</button>
+          <button role="tab" type="button" id="tab-data" data-tab="data" aria-controls="inspector-body">Data</button>
+          <button role="tab" type="button" id="tab-compare" data-tab="compare" aria-controls="inspector-body">Compare</button>
+        </div>
+        <div class="inspector-body" id="inspector-body" role="tabpanel" tabindex="-1"></div>
+      </aside>
+    </main>
+
+    <dialog id="dlg-solve" class="dialog dialog-wide" aria-labelledby="dlg-solve-title"></dialog>
+    <dialog id="dlg-script" class="dialog dialog-wide" aria-labelledby="dlg-script-title"></dialog>
+    <dialog id="dlg-examples" class="dialog" aria-labelledby="dlg-examples-title"></dialog>
+    <dialog id="dlg-help" class="dialog dialog-wide" aria-labelledby="dlg-help-title"></dialog>
+    <dialog id="dlg-engine" class="dialog" aria-labelledby="dlg-engine-title"></dialog>
+    <dialog id="dlg-info" class="dialog" aria-labelledby="dlg-info-title"></dialog>
+
+    <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+    <input type="file" id="file-input" hidden />
+
+    <noscript><p class="noscript">CipherMind needs JavaScript. Serve this folder with <code>python -m http.server</code> and open it in a browser.</p></noscript>
+    <script>
+      // Browsers block ES modules on file:// pages, so explain how to serve the folder instead.
+      if (location.protocol === 'file:') {
+        document.addEventListener('DOMContentLoaded', function () {
+          var p = document.createElement('div');
+          p.className = 'file-warning';
+          p.innerHTML = '<strong>CipherMind needs to be served over HTTP.</strong> In this folder run <code>python -m http.server 8000</code>, then open <code>http://localhost:8000</code>.';
+          document.body.prepend(p);
+        });
+      }
+    </script>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
