@@ -10,6 +10,7 @@ class Base64Plugin(Plugin):
     name = "Base64"
 
     cost = 1
+    input_mode = "base64"
 
     # Check whether input is valid Base64
 

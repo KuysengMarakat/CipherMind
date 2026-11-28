@@ -8,8 +8,11 @@ class BinaryPlugin(Plugin):
 
     cost = 1
 
+    input_mode = "binary"
 
-    # Check whether input is valid binary
+    # ======================================
+    # 1. Detect Binary
+    # ======================================
 
     def detect(self, state):
 
@@ -23,45 +26,37 @@ class BinaryPlugin(Plugin):
 
             return 0.0
 
-
-    # Perform binary decoding
+    # ======================================
+    # 2. Decode Binary
+    # ======================================
 
     def apply(self, state):
 
         return self._decode(state)
 
-
-    # Explain the operation
+    # ======================================
+    # 3. Explain Operation
+    # ======================================
 
     def explain(self, params=None):
 
         return "Decoded input using Binary."
 
-
-    # Internal decoding function
+    # ======================================
+    # 4. Internal Decoder
+    # ======================================
 
     def _decode(self, state):
-
-        # Check input type
 
         if not isinstance(state, str):
 
             raise TypeError("Input must be text")
 
-
-        # Remove spaces and new lines
-
         cleaned = "".join(state.split())
-
-
-        # Check empty input
 
         if not cleaned:
 
             raise ValueError("Input cannot be empty")
-
-
-        # Binary only allows 0 and 1
 
         for character in cleaned:
 
@@ -69,15 +64,11 @@ class BinaryPlugin(Plugin):
 
                 raise ValueError("Invalid binary character")
 
-
-        # Each byte must contain 8 bits
-
         if len(cleaned) % 8 != 0:
 
-            raise ValueError("Binary length must be a multiple of 8")
-
-
-        # Convert binary into bytes
+            raise ValueError(
+                "Binary length must be a multiple of 8"
+            )
 
         byte_values = []
 
@@ -89,10 +80,4 @@ class BinaryPlugin(Plugin):
 
             byte_values.append(byte_value)
 
-
-        # Convert list of integers into bytes
-
-        decoded = bytes(byte_values)
-
-
-        return decoded
+        return bytes(byte_values)

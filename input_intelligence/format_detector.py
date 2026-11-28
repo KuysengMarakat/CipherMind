@@ -1,10 +1,48 @@
-
 import base64
 import binascii
+import re
+
+from decoders.extra_decoders import (
+    decode_base85,
+    decode_octal,
+    decode_decimal,
+    decode_url,
+    decode_html_entities,
+    decode_morse,
+    decode_base58_text,
+)
+
+
+BASE32_PATTERN = re.compile(r"[A-Z2-7]+=*")
+
+BASE64_PATTERN = re.compile(r"[A-Za-z0-9+/]+={0,2}")
+
+BASE58_PATTERN = re.compile(r"[1-9A-HJ-NP-Za-km-z]+")
+
+BASE85_PATTERN = re.compile(
+    r"[0-9A-Za-z!#$%&()*+\-;<=>?@^_`{|}~]+"
+)
+
+
+FILE_SIGNATURES = [
+
+    ("PNG", b"\x89PNG\r\n\x1a\n"),
+
+    ("JPEG", b"\xff\xd8\xff"),
+
+    ("GIF", b"GIF87a"),
+
+    ("GIF", b"GIF89a"),
+
+    ("PDF", b"%PDF-"),
+
+    ("ZIP", b"PK\x03\x04"),
+
+]
 
 
 # ==========================================
-# 1. Detect Character Set
+# 1. DETECT CHARACTER SET
 # ==========================================
 
 def detect_character_set(data):
@@ -54,7 +92,6 @@ def detect_character_set(data):
 
     if data.isascii():
         result.append("ASCII")
-
     else:
         result.append("Unicode")
 
@@ -62,10 +99,76 @@ def detect_character_set(data):
 
 
 # ==========================================
-# 2. Decode Possible Formats
+# 2. CHECK FILE SIGNATURE
+# ==========================================
+
+def detect_file_signature(raw_data):
+
+    if not isinstance(raw_data, bytes):
+        raise TypeError("Input must be bytes")
+
+    for file_name, signature in FILE_SIGNATURES:
+
+        if raw_data.startswith(signature):
+            return file_name
+
+    return "No known file signature"
+
+
+# ==========================================
+# 3. CHECK PLAUSIBLE DECODED PAYLOAD
+# ==========================================
+
+def is_plausible_payload(raw_data):
+
+    if not isinstance(raw_data, bytes):
+        return False
+
+    if not raw_data:
+        return False
+
+    # Recognized binary file signatures are valid.
+
+    if detect_file_signature(raw_data) != "No known file signature":
+        return True
+
+    try:
+
+        text = raw_data.decode("utf-8")
+
+    except UnicodeDecodeError:
+
+        # Permit larger binary payloads.
+        # Short random binary output is ambiguous.
+
+        return len(raw_data) >= 16
+
+    if not text:
+        return False
+
+    printable_count = sum(
+        char.isprintable() or char in "\t\n\r"
+        for char in text
+    )
+
+    printable_ratio = (
+        printable_count / len(text)
+    )
+
+    return (
+        printable_ratio >= 0.80
+        or len(raw_data) >= 16
+    )
+
+
+# ==========================================
+# 4. DECODE POSSIBLE FORMATS
 # ==========================================
 
 def decode_possible_formats(data):
+
+    if not isinstance(data, str):
+        raise TypeError("Input must be text")
 
     candidates = {}
 
@@ -74,15 +177,14 @@ def decode_possible_formats(data):
     if cleaned == "":
         return candidates
 
+    # --------------------------------------
+    # BINARY
+    # --------------------------------------
 
-    # Check Binary
-
-    binary = True
-
-    for character in cleaned:
-
-        if character != "0" and character != "1":
-            binary = False
+    binary = all(
+        character in "01"
+        for character in cleaned
+    )
 
     if binary and len(cleaned) % 8 == 0:
 
@@ -90,86 +192,228 @@ def decode_possible_formats(data):
 
         for i in range(0, len(cleaned), 8):
 
-            byte_value = int(cleaned[i:i + 8], 2)
+            byte_value = int(
+                cleaned[i:i + 8],
+                2
+            )
 
             byte_values.append(byte_value)
 
         candidates["Binary"] = bytes(byte_values)
 
-
-    # Check Hexadecimal
+    # --------------------------------------
+    # HEXADECIMAL
+    # --------------------------------------
 
     try:
 
         hex_data = bytes.fromhex(cleaned)
 
         if len(hex_data) > 0:
-
             candidates["Hexadecimal"] = hex_data
 
     except ValueError:
-
         pass
 
+    # --------------------------------------
+    # BASE32
+    # --------------------------------------
 
-    # Check Base64
+    base32_source = data.strip()
 
-    try:
+    if (
+        base32_source
+        and not any(char.isspace() for char in base32_source)
+    ):
 
-        if len(cleaned) % 4 == 1:
+        normalized = base32_source.upper()
 
-            raise ValueError("Invalid Base64 length")
+        try:
 
-        if "=" in cleaned:
+            if BASE32_PATTERN.fullmatch(normalized):
 
-            if len(cleaned) % 4 != 0:
+                if "=" in normalized:
 
-                raise ValueError("Invalid padding")
+                    if len(normalized) % 8 != 0:
+                        raise ValueError("Invalid Base32 padding")
 
-            base64_data = cleaned
+                    padded = normalized
 
-        else:
+                else:
 
-            padding = (4 - len(cleaned) % 4) % 4
+                    if len(normalized) % 8 not in (0, 2, 4, 5, 7):
+                        raise ValueError("Invalid Base32 length")
 
-            base64_data = cleaned + ("=" * padding)
+                    padded = normalized + "=" * (
+                        (8 - len(normalized) % 8) % 8
+                    )
 
+                decoded = base64.b32decode(
+                    padded,
+                    casefold=True
+                )
 
-        decoded = base64.b64decode(
-            base64_data,
-            validate=True
-        )
+                canonical = base64.b32encode(
+                    decoded
+                ).decode("ascii")
 
+                if "=" in normalized:
 
-        encoded_again = base64.b64encode(
-            decoded
-        ).decode("ascii")
+                    valid = canonical == normalized
 
+                else:
 
-        if "=" in cleaned:
+                    valid = (
+                        canonical.rstrip("=") == normalized
+                    )
 
-            valid = encoded_again == cleaned
+                if (
+                    valid
+                    and is_plausible_payload(decoded)
+                ):
 
-        else:
+                    candidates["Base32"] = decoded
 
-            valid = encoded_again.rstrip("=") == cleaned
+        except (ValueError, binascii.Error):
+            pass
 
+    # --------------------------------------
+    # BASE64
+    # --------------------------------------
 
-        if valid and len(decoded) > 0:
+    base64_source = data.strip()
 
-            candidates["Base64"] = decoded
+    if (
+        base64_source
+        and not any(char.isspace() for char in base64_source)
+    ):
 
+        try:
 
-    except (ValueError, binascii.Error):
+            if BASE64_PATTERN.fullmatch(base64_source):
 
-        pass
+                if "=" in base64_source:
 
+                    if len(base64_source) % 4 != 0:
+                        raise ValueError("Invalid Base64 padding")
+
+                    padded = base64_source
+
+                else:
+
+                    if len(base64_source) % 4 == 1:
+                        raise ValueError("Invalid Base64 length")
+
+                    padding = (
+                        4 - len(base64_source) % 4
+                    ) % 4
+
+                    padded = base64_source + ("=" * padding)
+
+                decoded = base64.b64decode(
+                    padded,
+                    validate=True
+                )
+
+                canonical = base64.b64encode(
+                    decoded
+                ).decode("ascii")
+
+                if "=" in base64_source:
+
+                    valid = canonical == base64_source
+
+                else:
+
+                    valid = (
+                        canonical.rstrip("=") == base64_source
+                    )
+
+                if (
+                    valid
+                    and is_plausible_payload(decoded)
+                ):
+
+                    candidates["Base64"] = decoded
+
+        except (ValueError, binascii.Error):
+            pass
+
+    # --------------------------------------
+    # ADDITIONAL ENCODINGS
+    # --------------------------------------
+
+    extra_decoders = {
+
+        "Base58": decode_base58_text,
+
+        "Base85": decode_base85,
+
+        "Octal": decode_octal,
+
+        "Decimal": decode_decimal,
+
+        "URL": decode_url,
+
+        "HTML entities": decode_html_entities,
+
+        "Morse": decode_morse,
+
+    }
+
+    for name, decoder in extra_decoders.items():
+
+        source = data.strip()
+
+        # Strict Base58 validation.
+
+        if name == "Base58":
+
+            if (
+                len(source) < 8
+                or any(char.isspace() for char in source)
+                or not BASE58_PATTERN.fullmatch(source)
+            ):
+                continue
+
+        # Strict Base85 validation.
+
+        if name == "Base85":
+
+            if (
+                len(source) < 8
+                or any(char.isspace() for char in source)
+                or source.isalpha()
+                or not BASE85_PATTERN.fullmatch(source)
+            ):
+                continue
+
+        try:
+
+            if name in {"Base58", "Base85"}:
+                decoded = decoder(source)
+            else:
+                decoded = decoder(data)
+
+            if not isinstance(decoded, (bytes, bytearray)):
+                continue
+
+            decoded = bytes(decoded)
+
+            if not is_plausible_payload(decoded):
+                continue
+
+            if len(source) >= 8:
+                candidates[name] = decoded
+
+        except (ValueError, TypeError, UnicodeError):
+            continue
 
     return candidates
 
 
 # ==========================================
-# 3. Detect Possible Encoding
+# 5. DETECT POSSIBLE ENCODING
 # ==========================================
 
 def detect_possible_encoding(data):
@@ -180,17 +424,21 @@ def detect_possible_encoding(data):
 
     for format_name in candidates:
 
-        result.append("Possible " + format_name)
+        result.append(
+            "Possible " + format_name
+        )
 
-    if len(result) == 0:
+    if not result:
 
-        result.append("No supported encoding detected")
+        result.append(
+            "No supported encoding detected"
+        )
 
     return result
 
 
 # ==========================================
-# 4. Validate UTF-8
+# 6. VALIDATE UTF-8
 # ==========================================
 
 def validate_utf8(raw_data):
@@ -206,34 +454,3 @@ def validate_utf8(raw_data):
         return False
 
 
-# ==========================================
-# 5. Detect File Signature
-# ==========================================
-
-def detect_file_signature(raw_data):
-
-    signatures = [
-
-        ("PNG", b"\x89PNG\r\n\x1a\n"),
-
-        ("JPEG", b"\xff\xd8\xff"),
-
-        ("GIF", b"GIF87a"),
-
-        ("GIF", b"GIF89a"),
-
-        ("PDF", b"%PDF-"),
-
-        ("ZIP", b"PK\x03\x04"),
-
-    ]
-
-
-    for file_name, signature in signatures:
-
-        if raw_data.startswith(signature):
-
-            return file_name
-
-
-    return "No known file signature"

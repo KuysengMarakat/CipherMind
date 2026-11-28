@@ -1,1 +1,5 @@
-# CipherMind uses only the Python standard library.
+# Modern cryptography and password-hash support.
+# Install with: python3 -m pip install -r requirements.txt
+cryptography>=43.0
+bcrypt>=4.1
+argon2-cffi>=23.1

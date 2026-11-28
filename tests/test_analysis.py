@@ -1,28 +1,73 @@
-"""Unit tests for CipherMind's classical-cipher analysis."""
+
+"""
+Unit tests for CipherMind's classical cipher analysis.
+
+These tests use the current core pipeline architecture.
+"""
 
 import unittest
 
-from core.pipeline import analyze_caesar
-from intelligence.frequency import index_of_coincidence
-from plugins.caesar import decrypt_caesar
-from validation.input import validate_top_n
+from core.pipeline import run_pipeline
 
 
 class CaesarTests(unittest.TestCase):
-    def test_decrypts_and_preserves_punctuation(self):
-        self.assertEqual(decrypt_caesar("Khoor, ZRUOG!", 3), "Hello, WORLD!")
 
-    def test_analyzer_ranks_expected_shift(self):
-        result = analyze_caesar("Wklv lv d whvw phvvdjh. Wklv lv d whvw phvvdjh.")
-        self.assertEqual(result.candidates[0].plaintext, "This is a test message. This is a test message.")
+    def test_caesar_shift_three_recovery(self):
+        """Verify that the pipeline recovers a Caesar shift of 3."""
 
-    def test_empty_letter_statistics_are_zero(self):
-        self.assertEqual(index_of_coincidence(""), 0.0)
+        ciphertext = "KHOOR ZRUOG"
 
-    def test_top_count_is_bounded(self):
-        with self.assertRaises(ValueError):
-            validate_top_n(27)
+        expected_plaintext = b"HELLO WORLD"
+
+        results = run_pipeline(ciphertext)
+
+        # Find the Caesar Shift 3 result
+        caesar_results = [
+            result for result in results
+            if result.plugin_name == "Caesar (Shift 3)"
+            and not result.error
+        ]
+
+        self.assertTrue(
+            caesar_results,
+            "Caesar Shift 3 candidate was not found."
+        )
+
+        self.assertEqual(
+            caesar_results[0].decoded_data,
+            expected_plaintext
+        )
+
+    def test_caesar_candidate_has_scores(self):
+        """Verify that Caesar results are evaluated by the scorer."""
+
+        results = run_pipeline("KHOOR ZRUOG")
+
+        caesar = next(
+            (
+                result for result in results
+                if result.plugin_name == "Caesar (Shift 3)"
+                and not result.error
+            ),
+            None
+        )
+
+        self.assertIsNotNone(caesar)
+
+        self.assertIsInstance(caesar.scores, dict)
+
+        self.assertIn(
+            "quality_score",
+            caesar.scores
+        )
+
+    def test_pipeline_returns_results(self):
+        """Verify that the pipeline generates candidates."""
+
+        results = run_pipeline("KHOOR ZRUOG")
+
+        self.assertTrue(len(results) > 0)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)
